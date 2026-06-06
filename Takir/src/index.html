@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Takir - Skills &amp; Quests</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+    <div id="app" class="app">
+        <header class="app-header">
+            <div class="brand">
+                <h1 class="brand-title">Takir</h1>
+                <span class="brand-subtitle">Skills &amp; Quests</span>
+            </div>
+            <div class="header-actions">
+                <button id="btn-ai" class="btn btn-ghost" title="AI Assistant (Tak)">
+                    <span class="icon">&#x2728;</span>
+                    <span>AI</span>
+                </button>
+                <button id="btn-help" class="btn btn-ghost" title="Help" aria-haspopup="true" aria-expanded="false">
+                    <span class="icon">&#x2753;</span>
+                    <span>Help</span>
+                </button>
+                <button id="btn-settings" class="btn btn-ghost" title="Settings">
+                    <span class="icon">&#x2699;</span>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <section class="main-pane">
+                <div class="tab-bar" role="tablist">
+                    <button class="tab tab-skills active" data-tab="skills" role="tab">
+                        <span class="tab-icon">S</span>
+                        <span>Skills</span>
+                    </button>
+                    <button class="tab tab-tasks" data-tab="tasks" role="tab">
+                        <span class="tab-icon">Q</span>
+                        <span>Quests</span>
+                    </button>
+                    <button class="tab tab-learn" data-tab="learn" role="tab">
+                        <span class="tab-icon">L</span>
+                        <span>Learn</span>
+                    </button>
+                    <div class="tab-spacer"></div>
+                    <button id="btn-add" class="btn btn-primary tab-action">
+                        <span class="icon">+</span>
+                        <span id="btn-add-label">New Skill</span>
+                    </button>
+                </div>
+
+                <div class="filter-bar">
+                    <input id="search-input" type="text" class="search-input" placeholder="Search..." />
+                    <div class="filter-chips" id="filter-chips"></div>
+                </div>
+
+                <div id="view-container" class="view-container">
+                    <!-- Rendered list/tree view goes here -->
+                </div>
+
+                <!-- Learn view lives as a sibling of #view-container (not a
+                     child), so ui.js's clear(view-container) on the Skills /
+                     Quests tabs doesn't wipe the chat UI. -->
+                <div id="learn-view" class="learn-view hidden">
+                    <div class="learn-header">
+                        <h2 class="learn-title">Learn with <span class="learn-tak">Tak</span></h2>
+                        <p class="learn-sub">Ask anything. Tak will look things up and point you to the best free resources.</p>
+                    </div>
+                    <div id="learn-messages" class="learn-messages" role="log" aria-live="polite"></div>
+                    <form id="learn-form" class="learn-form" autocomplete="off">
+                        <textarea id="learn-input" class="learn-input" rows="2" placeholder="What do you want to learn? e.g. How do closures work in JavaScript?" aria-label="Ask Tak"></textarea>
+                        <button id="learn-send" type="submit" class="btn btn-primary">
+                            <span class="icon">&#x27A4;</span>
+                            <span>Ask Tak</span>
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <aside id="detail-pane" class="detail-pane">
+                <div class="detail-empty">
+                    <div class="detail-empty-emblem">&#x2756;</div>
+                    <h2>Nothing selected</h2>
+                    <p>Pick a skill or quest from the list to see its details, or create a new one.</p>
+                </div>
+            </aside>
+        </main>
+
+        <div id="toast-container" class="toast-container" aria-live="polite"></div>
+    </div>
+
+    <!-- AI chat panel -->
+    <aside id="ai-panel" class="ai-panel hidden" role="complementary" aria-label="AI Assistant">
+        <div class="ai-panel-header">
+            <h2 class="ai-panel-title">Tak <span class="ai-panel-sub">— AI Assistant</span></h2>
+            <div class="ai-panel-actions">
+                <button id="btn-ai-memory" class="btn btn-ghost btn-sm" title="View memory">
+                    <span class="icon">&#x1F9E0;</span>
+                    <span>Memory</span>
+                </button>
+                <button id="btn-ai-clear" class="btn btn-ghost btn-sm" title="Clear chat">
+                    <span>Clear</span>
+                </button>
+                <button id="btn-ai-close" class="btn btn-ghost btn-sm" title="Close panel" data-close-ai>
+                    <span aria-hidden="true">&#x2715;</span>
+                </button>
+            </div>
+        </div>
+        <div id="ai-messages" class="ai-messages" role="log" aria-live="polite"></div>
+        <form id="ai-form" class="ai-form" autocomplete="off">
+            <textarea id="ai-input" class="ai-input" rows="2" placeholder="Tell Tak what to do with your skills and quests..." aria-label="Message Tak"></textarea>
+            <button id="ai-send" type="submit" class="btn btn-primary">
+                <span class="icon">&#x27A4;</span>
+                <span>Send</span>
+            </button>
+        </form>
+    </aside>
+
+    <!-- Help menu (popover attached to btn-help) -->
+    <div id="help-menu" class="help-menu hidden" role="menu" aria-label="Help">
+        <button id="help-replay-tour" class="help-menu-item" role="menuitem">
+            <span class="icon">&#x1F6E3;</span>
+            <span>Replay tour</span>
+        </button>
+        <button id="help-replay-onboarding" class="help-menu-item" role="menuitem">
+            <span class="icon">&#x1F39B;</span>
+            <span>Show welcome again</span>
+        </button>
+        <button id="help-report-bug" class="help-menu-item" role="menuitem">
+            <span class="icon">&#x1F41B;</span>
+            <span>Report a bug</span>
+        </button>
+        <div class="help-menu-divider"></div>
+        <a class="help-menu-item" href="https://openrouter.ai/keys" target="_blank" rel="noopener" role="menuitem">
+            <span class="icon">&#x1F511;</span>
+            <span>Get an OpenRouter key</span>
+        </a>
+    </div>
+
+    <!-- Bug report modal -->
+    <div id="bug-modal" class="modal hidden">
+        <div class="modal-card" style="min-width: 520px; max-width: 720px;">
+            <h3>Report a Bug</h3>
+            <label>Title<input id="bug-title" type="text" placeholder="Briefly describe the issue"></label>
+            <label>What happened?<textarea id="bug-what" rows="3" placeholder="Describe what went wrong"></textarea></label>
+            <label>Steps to reproduce<textarea id="bug-steps" rows="3" placeholder="1. Open the app&#10;2. Click...&#10;3. See error"></textarea></label>
+            <label>Expected behaviour<textarea id="bug-expected" rows="2"></textarea></label>
+            <details style="margin-top: 8px; font-size: 12px; color: rgb(170,170,180);">
+                <summary style="cursor: pointer;">Include system info (click to expand)</summary>
+                <pre id="bug-sysinfo" style="background-color: rgb(20,20,24); padding: 8px; border-radius: 4px; margin-top: 6px; font-size: 11px; white-space: pre-wrap;"></pre>
+            </details>
+            <div class="modal-actions">
+                <button id="bug-cancel">Cancel</button>
+                <button id="bug-copy">Copy report</button>
+                <button id="bug-open" class="primary">Open GitHub</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Onboarding modal -->
+    <div id="onboarding-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+        <div class="modal-card onboarding-card">
+            <div class="onboarding-progress" id="onboarding-progress">
+                <span class="onboarding-dot active" data-step="0"></span>
+                <span class="onboarding-dot" data-step="1"></span>
+            </div>
+            <div class="onboarding-step onboarding-step-active" data-step="0">
+                <h3 id="onboarding-title">Welcome to Takir</h3>
+                <p class="onboarding-lead">A medieval-flavoured skill and quest tracker. Build a character sheet, take quizzes, and let <span class="learn-tak">Tak</span> (the AI) plan your next adventure.</p>
+                <p>Three views, all yours:</p>
+                <ul class="onboarding-list">
+                    <li><strong>Skills</strong> — things you know (e.g. Swordsmanship, Rust, Sourdough).</li>
+                    <li><strong>Quests</strong> — things to do, with prerequisite trees and progress uploads.</li>
+                    <li><strong>Learn</strong> — chat with Tak about anything. He can search the web and recommend free resources.</li>
+                </ul>
+                <p>Everything works offline. The AI features need an OpenRouter API key (free tier available).</p>
+            </div>
+            <div class="onboarding-step hidden" data-step="1">
+                <h3>Add your OpenRouter API key</h3>
+                <p>Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> (sign in, then "Create Key").</p>
+                <label>API Key
+                    <input id="onboarding-key" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
+                </label>
+                <p class="onboarding-hint">Stored locally on this device. Sent only to OpenRouter. You can change it later in Settings.</p>
+                <p class="onboarding-hint">You can skip this step and add the key later in Settings.</p>
+            </div>
+            <div class="modal-actions onboarding-actions">
+                <button id="onboarding-skip" class="btn btn-ghost">Skip</button>
+                <button id="onboarding-back" class="btn btn-ghost hidden">Back</button>
+                <button id="onboarding-next" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guided tour overlay -->
+    <div id="tour-overlay" class="tour-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+        <div class="tour-backdrop" id="tour-backdrop"></div>
+        <div class="tour-highlight" id="tour-highlight"></div>
+        <div class="tour-popover" id="tour-popover" role="document">
+            <div class="tour-progress">
+                <span id="tour-step-counter">1 / 1</span>
+                <div class="tour-dots" id="tour-dots"></div>
+            </div>
+            <h4 id="tour-title">Tour</h4>
+            <p id="tour-body">Loading…</p>
+            <div class="modal-actions tour-actions">
+                <button id="tour-skip" class="btn btn-ghost">Skip tour</button>
+                <button id="tour-prev" class="btn btn-ghost hidden">Back</button>
+                <button id="tour-next" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal-root" class="modal-root hidden" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" data-close></div>
+        <div class="modal-window">
+            <div class="modal-header">
+                <h2 id="modal-title">Title</h2>
+                <button class="modal-close" data-close aria-label="Close">&#x2715;</button>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+            <div id="modal-footer" class="modal-footer"></div>
+        </div>
+    </div>
+
+    <!-- Card templates -->
+    <template id="tpl-skill-card">
+        <article class="card skill-card" data-id="">
+            <div class="card-emblem">S</div>
+            <div class="card-body">
+                <h3 class="card-title"></h3>
+                <p class="card-desc"></p>
+                <div class="card-meta">
+                    <span class="level-badge"></span>
+                    <span class="prereq-info"></span>
+                </div>
+            </div>
+            <div class="card-status"></div>
+        </article>
+    </template>
+
+    <template id="tpl-task-card">
+        <article class="card task-card" data-id="">
+            <div class="card-emblem">Q</div>
+            <div class="card-body">
+                <h3 class="card-title"></h3>
+                <p class="card-desc"></p>
+                <div class="card-meta">
+                    <span class="status-badge"></span>
+                    <span class="prereq-info"></span>
+                </div>
+            </div>
+            <div class="card-status"></div>
+        </article>
+    </template>
+
+    <script type="module" src="./js/app.js"></script>
+</body>
+</html>

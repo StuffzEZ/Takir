@@ -1,0 +1,246 @@
+/* ==========================================================
+   views/settings.js
+   Settings modal: API key, model, data path, import/export, clear.
+   ========================================================== */
+
+import { el, openModal, closeModal, confirmDialog, success, error } from '../ui.js';
+import { store } from '../state.js';
+import { isApiKeyConfigured } from '../api.js';
+import { exportToFile, importFromFile } from '../io.js';
+import { startTour } from './tour.js';
+import { openBugReport } from './bug-report.js';
+import { maybeShowOnboarding } from './onboarding.js';
+
+function hasTauriInvoke() {
+    return typeof window !== 'undefined'
+        && !!window.__TAURI__
+        && !!window.__TAURI__.core
+        && typeof window.__TAURI__.core.invoke === 'function';
+}
+
+async function exportDataFlow(includeApiKey) {
+    try {
+        exportToFile({ includeApiKey });
+        success(includeApiKey ? 'Exported (with API key).' : 'Exported.');
+    } catch (e) {
+        error(e.message);
+    }
+}
+
+async function importDataFlow(fileInput) {
+    const f = fileInput.files?.[0];
+    if (!f) return;
+    try {
+        const res = await importFromFile(f, { clearAiHistory: true });
+        success(`Imported${res.exportedAt ? ' from ' + new Date(res.exportedAt).toLocaleString() : ''}.`);
+        closeModal();
+    } catch (e) {
+        error(e.message);
+    } finally {
+        try { fileInput.value = ''; } catch { /* ignore */ }
+    }
+}
+
+export function openSettings() {
+    const state = store.state;
+
+    const apiInput = el('input', {
+        class: 'form-input',
+        type: 'password',
+        placeholder: 'sk-or-...',
+        autocomplete: 'off',
+    });
+    apiInput.value = state.apiKey || '';
+
+    const modelInput = el('input', {
+        class: 'form-input',
+        type: 'text',
+        placeholder: 'google/gemma-4-31b-it:free',
+    });
+    modelInput.value = state.model || '';
+
+    const searxngInput = el('input', {
+        class: 'form-input',
+        type: 'text',
+        placeholder: 'http://141.147.118.157:8926/',
+    });
+    searxngInput.value = state.searxngUrl || '';
+
+    const pathDisplay = el('p', { class: 'form-hint mono', style: 'word-break:break-all;' }, 'Resolving\u2026');
+    if (hasTauriInvoke()) {
+        try {
+            const invokePromise = window.__TAURI__.core.invoke('state_path');
+            invokePromise
+                .then(p => { pathDisplay.textContent = p; })
+                .catch(() => { pathDisplay.textContent = '(unavailable)'; });
+            invokePromise.catch(() => {});
+        } catch {
+            pathDisplay.textContent = '(unavailable)';
+        }
+    } else {
+        pathDisplay.textContent = '(Tauri runtime not available)';
+    }
+
+    const status = el('p', { class: 'form-hint' }, 'Your key is stored locally on this device. Get one at openrouter.ai.');
+
+    // Import/Export controls
+    const includeKeyCheckbox = el('input', { type: 'checkbox', id: 'export-include-key' });
+    const includeKeyLabel = el('label', { class: 'form-hint', style: 'display:flex;align-items:center;gap:6px;margin:6px 0 0;' }, [
+        includeKeyCheckbox,
+        el('span', {}, 'Include API key in export (otherwise left blank)'),
+    ]);
+    const exportBtn = el('button', {
+        class: 'btn btn-ghost',
+        onClick: () => exportDataFlow(includeKeyCheckbox.checked),
+    }, [
+        el('span', { class: 'icon', html: '\u2B07' }),
+        el('span', {}, 'Export .takir file'),
+    ]);
+
+    const importFileInput = el('input', {
+        class: 'form-input',
+        type: 'file',
+        accept: '.takir,application/json',
+    });
+    importFileInput.addEventListener('change', () => importDataFlow(importFileInput));
+    const importBtn = el('button', {
+        class: 'btn btn-ghost',
+        onClick: () => importFileInput.click(),
+    }, [
+        el('span', { class: 'icon', html: '\u2B06' }),
+        el('span', {}, 'Import .takir file'),
+    ]);
+    const importHint = el('p', { class: 'form-hint' }, 'Importing replaces all current data (skills, quests, AI memory). Your API key is preserved.');
+
+    const body = el('div', {}, [
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'OpenRouter API Key'),
+            apiInput,
+            status,
+        ]),
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'Model'),
+            modelInput,
+            el('p', { class: 'form-hint' }, `Default: ${state.model || 'google/gemma-4-31b-it:free'}. If unavailable, try ${state.modelHint || 'google/gemma-3-27b-it:free'} (known free, vision-capable).`),
+        ]),
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'SearXNG URL (web search)'),
+            searxngInput,
+            el('p', { class: 'form-hint' }, 'The public SearXNG instance Tak uses for web_search. Default: http://141.147.118.157:8926/. You can also self-host one and put its URL here.'),
+        ]),
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'Data File Location'),
+            pathDisplay,
+        ]),
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'Test API Key'),
+            el('button', {
+                class: 'btn btn-ghost btn-block',
+                onClick: async () => {
+                    if (!isApiKeyConfigured(store.state)) {
+                        error('Set your API key first.');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+                            headers: { 'Authorization': `Bearer ${store.state.apiKey}` }
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            const credits = data?.data?.limit_remaining ?? data?.data?.usage ?? '?';
+                            success(`Key is valid. Remaining credits: $${credits}`);
+                        } else {
+                            error(`Key check failed: HTTP ${res.status}`);
+                        }
+                    } catch (e) {
+                        error(`Key check failed: ${e.message}`);
+                    }
+                },
+            }, [
+                el('span', { class: 'icon', html: '\u2728' }),
+                el('span', {}, 'Test API Key'),
+            ]),
+        ]),
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'Backup & Restore'),
+            el('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;' }, [exportBtn, importBtn]),
+            includeKeyLabel,
+            importFileInput,
+            importHint,
+        ]),
+        el('div', { class: 'form-group' }, [
+            el('label', { class: 'form-label' }, 'Help'),
+            el('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;' }, [
+                el('button', {
+                    class: 'btn btn-ghost',
+                    onClick: () => { closeModal(); startTour(); },
+                }, [
+                    el('span', { class: 'icon', html: '\u{1F6E3}' }),
+                    el('span', {}, 'Replay tour'),
+                ]),
+                el('button', {
+                    class: 'btn btn-ghost',
+                    onClick: () => { closeModal(); maybeShowOnboarding({ force: true }); },
+                }, [
+                    el('span', { class: 'icon', html: '\u{1F39B}' }),
+                    el('span', {}, 'Show welcome'),
+                ]),
+                el('button', {
+                    class: 'btn btn-ghost',
+                    onClick: () => { closeModal(); openBugReport(); },
+                }, [
+                    el('span', { class: 'icon', html: '\u{1F41B}' }),
+                    el('span', {}, 'Report a bug'),
+                ]),
+            ]),
+            el('p', { class: 'form-hint' }, 'You can also use the ? button in the header for the same options.'),
+        ]),
+    ]);
+
+    const saveBtn = el('button', {
+        class: 'btn btn-primary',
+        onClick: () => {
+            store.setApiKey(apiInput.value);
+            store.setModel(modelInput.value);
+            store.setSearxngUrl(searxngInput.value);
+            success('Settings saved.');
+            closeModal();
+        },
+    }, 'Save');
+    const cancelBtn = el('button', { class: 'btn btn-ghost', onClick: closeModal }, 'Cancel');
+    const clearBtn = el('button', {
+        class: 'btn btn-danger',
+        onClick: async () => {
+            const ok = await confirmDialog({
+                title: 'Erase everything?',
+                message: 'This will permanently delete all skills, quests, AI chat history, Learn chat history, and AI memory. Your API key, model, and SearXNG URL are kept.\n\nThis cannot be undone.',
+                confirmLabel: 'Erase everything',
+                danger: true,
+            });
+            if (!ok) return;
+            clearBtn.disabled = true;
+            clearBtn.textContent = 'Clearing...';
+            try {
+                // Await the wipe: clearAllData clears in-memory + session
+                // cache, then immediately writes the empty state to the
+                // file store (no debounce). When this resolves, the file
+                // is the new "blank" state.
+                await store.clearAllData({ keepSettings: true });
+                success('All data cleared.');
+            } catch (e) {
+                error(`Clear failed: ${e.message}`);
+            } finally {
+                clearBtn.disabled = false;
+                clearBtn.textContent = 'Clear all data';
+            }
+            closeModal();
+        },
+    }, 'Clear all data');
+
+    openModal({
+        title: 'Settings',
+        body,
+        footer: [clearBtn, cancelBtn, saveBtn],
+        onClose: () => {},
+    });
+}

@@ -226,7 +226,26 @@ export async function startQuiz(skillId) {
             attachments: [],
         });
     } catch (e) {
-        error(e.message);
+        // The AI helper has already logged the raw response to the
+        // console as [Takir AI] (regardless of the debug toggle), so
+        // give the user a clear, actionable message here.
+        try {
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn(`[Takir] Quiz generation failed for "${skill.name}":`, e.message);
+            }
+        } catch { /* ignore */ }
+        error(`Couldn't generate the assessment: ${e.message}`);
+        closeModal();
+        return;
+    }
+
+    if (!quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+        try {
+            if (typeof console !== 'undefined' && console.warn) {
+                console.warn(`[Takir] generateSkillQuiz returned an empty quiz for "${skill.name}"`);
+            }
+        } catch { /* ignore */ }
+        error('The AI returned an empty assessment. Please try again.');
         closeModal();
         return;
     }

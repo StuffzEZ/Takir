@@ -28,6 +28,25 @@ function isDebug() {
     catch { return false; }
 }
 
+function debugLog(...args) {
+    if (!isDebug()) return;
+    try {
+        if (typeof console !== 'undefined' && console.debug) {
+            console.debug('[Takir AI]', ...args);
+        } else if (typeof console !== 'undefined' && console.log) {
+            console.log('[Takir AI]', ...args);
+        }
+    } catch { /* never let logging crash the app */ }
+}
+
+function warnLog(...args) {
+    try {
+        if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[Takir AI]', ...args);
+        }
+    } catch { /* ignore */ }
+}
+
 /* ---------------------- system prompt ---------------------- */
 
 export const TAKIR_SYSTEM_PROMPT = `You are Tak (or "the AI"), the AI assistant inside Takir, a personal task and skill manager. Be friendly, precise, and useful. Your name is Tak.
@@ -903,10 +922,10 @@ export async function runAgentTurn({
     const transcript = [];
     let finalText = '';
 
+    debugLog(`agent turn: model=${model}, maxSteps=${maxSteps}, history=${history.length}, systemPrompt=${systemPrompt ? 'custom' : 'default'}`);
+
     for (let step = 0; step < maxSteps; step++) {
-        if (isDebug()) {
-            try { console.debug(`[Takir AI] step ${step + 1}/${maxSteps} (${messages.length} msgs in history)`); } catch { /* ignore */ }
-        }
+        debugLog(`step ${step + 1}/${maxSteps} (${messages.length} msgs in history)`);
         const result = await chat({
             apiKey, model, messages,
             tools: tools || TOOLS,
@@ -925,31 +944,34 @@ export async function runAgentTurn({
 
         if (result.text) {
             finalText = result.text;
+            debugLog(`assistant text (${result.text.length} chars):`, result.text.length > 200 ? result.text.slice(0, 200) + '…' : result.text);
             if (onAssistantText) {
                 try { await onAssistantText(result.text); } catch { /* ignore */ }
             }
         }
 
-        if (!result.toolCalls || result.toolCalls.length === 0) break;
+        if (!result.toolCalls || result.toolCalls.length === 0) {
+            debugLog(`step ${step + 1}: no tool calls, ending loop`);
+            break;
+        }
+
+        debugLog(`step ${step + 1}: ${result.toolCalls.length} tool call(s)`);
 
         for (const call of result.toolCalls) {
             const name = call?.function?.name;
             const args = parseToolArgs(call);
             const handler = TOOL_HANDLERS[name];
             const record = { name, arguments: args, id: call.id };
-            if (isDebug()) {
-                try { console.debug(`[Takir AI] tool call: ${name}`, args); } catch { /* ignore */ }
-            }
+            debugLog(`tool call: ${name}`, args);
             try {
                 const out = handler ? await handler(args) : fail(`Unknown tool: ${name}`, 'unknown_tool');
                 record.result = out;
                 const content = typeof out === 'string' ? out : JSON.stringify(out);
                 messages.push({ role: 'tool', tool_call_id: call.id, content });
                 transcript.push({ role: 'tool', tool_call_id: call.id, content });
-                if (isDebug()) {
-                    try { console.debug(`[Takir AI] tool result: ${name}`, out); } catch { /* ignore */ }
-                }
+                debugLog(`tool result: ${name}`, out);
             } catch (e) {
+                warnLog(`tool ${name} threw:`, e.message || String(e));
                 const err = fail(e.message || String(e), 'exception');
                 record.result = err;
                 messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(err) });
@@ -961,5 +983,6 @@ export async function runAgentTurn({
         }
     }
 
+    debugLog(`agent turn done (finalText length: ${finalText.length})`);
     return { text: finalText, transcript };
 }

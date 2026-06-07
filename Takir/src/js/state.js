@@ -55,6 +55,26 @@ const defaultState = {
     apiKey: '',
     model: 'google/gemma-4-31b-it:free',   // as recommended
     modelHint: 'google/gemma-3-27b-it:free', // fallback that's known to work
+    // Curated list of free, vision-capable OpenRouter models. The Settings
+    // modal shows this as a picker so the user can switch when the
+    // default gets rate-limited. Each entry: { id, label, note }.
+    freeModels: [
+        { id: 'google/gemma-4-31b-it:free',  label: 'Google Gemma 4 31B (free)',  note: 'default; vision-capable' },
+        { id: 'google/gemma-3-27b-it:free',  label: 'Google Gemma 3 27B (free)',  note: 'stable fallback; vision-capable' },
+        { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Meta Llama 3.3 70B (free)', note: 'good at structured JSON' },
+        { id: 'mistralai/mistral-small-3.2-24b-instruct:free', label: 'Mistral Small 3.2 24B (free)', note: 'fast, decent at JSON' },
+        { id: 'qwen/qwen-2.5-72b-instruct:free', label: 'Qwen 2.5 72B (free)', note: 'good at following JSON schemas' },
+        { id: 'nousresearch/hermes-3-llama-3.1-405b:free', label: 'Hermes 3 Llama 3.1 405B (free)', note: 'large; slow when not throttled' },
+    ],
+    // Index into freeModels — the model id used for the next AI call. The
+    // user picks from the dropdown; this stays in sync. -1 = "custom",
+    // i.e. they typed something in the text field.
+    freeModelIndex: 0,
+    // Per-model rate-limit cooldown: { 'google/gemma-x': epochMs }.
+    // When a model returns 429, we record the cooldown and the auto-
+    // fallback in chat() will pick the next model whose cooldown has
+    // expired.
+    rateLimited: {},
     searxngUrl: 'http://141.147.118.157:8926/', // public SearXNG instance used by web_search
     skills: {},    // id -> Skill
     tasks: {},     // id -> Task
@@ -128,6 +148,15 @@ class Store extends EventTarget {
         merged.aiHistory = Array.isArray(merged.aiHistory) ? merged.aiHistory.slice(-MAX_AI_HISTORY) : [];
         merged.learnHistory = Array.isArray(merged.learnHistory) ? merged.learnHistory.slice(-MAX_LEARN_HISTORY) : [];
         merged.aiDebug = !!merged.aiDebug;
+        merged.rateLimited = (merged.rateLimited && typeof merged.rateLimited === 'object' && !Array.isArray(merged.rateLimited))
+            ? merged.rateLimited
+            : {};
+        // Ensure freeModels + freeModelIndex are consistent.
+        if (!Array.isArray(merged.freeModels)) merged.freeModels = defaultState.freeModels;
+        if (typeof merged.freeModelIndex !== 'number' || merged.freeModelIndex < 0) {
+            const idx = merged.freeModels.findIndex(x => x && x.id === merged.model);
+            merged.freeModelIndex = idx >= 0 ? idx : 0;
+        }
         return merged;
     }
 
@@ -470,7 +499,65 @@ class Store extends EventTarget {
 
     setModel(m) {
         this.state.model = (m || '').trim() || this.state.model;
+        // If the new model is in the curated list, sync the index so the
+        // Settings dropdown stays consistent.
+        if (Array.isArray(this.state.freeModels)) {
+            const idx = this.state.freeModels.findIndex(x => x && x.id === this.state.model);
+            this.state.freeModelIndex = idx >= 0 ? idx : -1;
+        }
         this.notify({ type: 'settings' });
+    }
+
+    setFreeModelIndex(idx) {
+        if (!Array.isArray(this.state.freeModels)) return;
+        if (idx < 0 || idx >= this.state.freeModels.length) return;
+        this.state.freeModelIndex = idx;
+        this.state.model = this.state.freeModels[idx].id;
+        this.notify({ type: 'settings' });
+    }
+
+    getFreeModels() {
+        return Array.isArray(this.state.freeModels) ? this.state.freeModels.slice() : [];
+    }
+
+    /**
+     * Mark a model as rate-limited for `cooldownMs` (default 60s). The
+     * chat() helper consults this to pick the next available fallback.
+     */
+    markRateLimited(modelId, cooldownMs = 60_000) {
+        if (!modelId) return;
+        if (!this.state.rateLimited || typeof this.state.rateLimited !== 'object') {
+            this.state.rateLimited = {};
+        }
+        this.state.rateLimited[modelId] = Date.now() + cooldownMs;
+        this.notify({ type: 'rate-limit' });
+    }
+
+    isRateLimited(modelId) {
+        if (!modelId) return false;
+        const r = this.state.rateLimited || {};
+        const until = r[modelId];
+        if (!until) return false;
+        if (Date.now() >= until) {
+            delete r[modelId]; // expired; clean up
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Pick the first non-rate-limited model from freeModels, in order.
+     * Returns null if every model is rate-limited.
+     */
+    pickFallbackModel(excludeId = null) {
+        const list = Array.isArray(this.state.freeModels) ? this.state.freeModels : [];
+        for (const m of list) {
+            if (!m || !m.id) continue;
+            if (m.id === excludeId) continue;
+            if (this.isRateLimited(m.id)) continue;
+            return m.id;
+        }
+        return null;
     }
 
     setSearxngUrl(u) {

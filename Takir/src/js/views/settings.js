@@ -59,6 +59,49 @@ export function openSettings() {
     });
     modelInput.value = state.model || '';
 
+    // Free-model picker — lets the user switch with one click when the
+    // default gets rate-limited. Synced with `state.model` and the index
+    // in `state.freeModelIndex`.
+    const modelSelect = el('select', { class: 'form-select', id: 'settings-model-select' });
+    function rebuildModelSelect() {
+        while (modelSelect.firstChild) modelSelect.removeChild(modelSelect.firstChild);
+        const list = store.getFreeModels();
+        list.forEach((m, idx) => {
+            const opt = el('option', { value: String(idx) }, `${m.label} — ${m.id}`);
+            opt.title = m.note || m.id;
+            modelSelect.appendChild(opt);
+        });
+        // Custom option
+        const custom = el('option', { value: '-1' }, 'Custom…');
+        modelSelect.appendChild(custom);
+        // Pick the right option based on current state
+        const idx = (typeof state.freeModelIndex === 'number' && state.freeModelIndex >= 0)
+            ? state.freeModelIndex
+            : -1;
+        modelSelect.value = String(idx);
+    }
+    rebuildModelSelect();
+    modelSelect.addEventListener('change', () => {
+        const v = modelSelect.value;
+        if (v === '-1') {
+            // Custom — focus the text input
+            modelInput.focus();
+            return;
+        }
+        const idx = parseInt(v, 10);
+        if (Number.isInteger(idx)) {
+            store.setFreeModelIndex(idx);
+        }
+    });
+    // When the user types a custom model name, mark as custom (index -1)
+    modelInput.addEventListener('input', () => {
+        if (Array.isArray(state.freeModels)) {
+            const idx = state.freeModels.findIndex(m => m && m.id === modelInput.value.trim());
+            state.freeModelIndex = idx >= 0 ? idx : -1;
+            modelSelect.value = String(state.freeModelIndex);
+        }
+    });
+
     const searxngInput = el('input', {
         class: 'form-input',
         type: 'text',
@@ -112,6 +155,30 @@ export function openSettings() {
     ]);
     const importHint = el('p', { class: 'form-hint' }, 'Importing replaces all current data (skills, quests, AI memory). Your API key is preserved.');
 
+    // AI debug toggle — pipes every AI request/response, agent step, and
+    // tool call to the browser DevTools console as [Takir AI] entries. Off
+    // by default; flip on when troubleshooting a misbehaving model.
+    const aiDebugCheckbox = el('input', {
+        type: 'checkbox',
+        id: 'settings-ai-debug',
+    });
+    aiDebugCheckbox.checked = !!state.aiDebug;
+    const aiDebugLabel = el('label', {
+        class: 'form-hint',
+        style: 'display:flex;align-items:center;gap:6px;margin:6px 0 0;cursor:pointer;',
+    }, [
+        aiDebugCheckbox,
+        el('span', {}, 'Log all AI requests, responses, and tool calls to the browser console as [Takir AI] entries (developer / debug)'),
+    ]);
+    aiDebugCheckbox.addEventListener('change', () => {
+        store.setAiDebug(aiDebugCheckbox.checked);
+        try {
+            if (typeof console !== 'undefined' && console.info) {
+                console.info(`[Takir AI] debug logging ${aiDebugCheckbox.checked ? 'enabled' : 'disabled'}`);
+            }
+        } catch { /* ignore */ }
+    });
+
     const body = el('div', {}, [
         el('div', { class: 'form-group' }, [
             el('label', { class: 'form-label' }, 'OpenRouter API Key'),
@@ -120,8 +187,10 @@ export function openSettings() {
         ]),
         el('div', { class: 'form-group' }, [
             el('label', { class: 'form-label' }, 'Model'),
+            modelSelect,
             modelInput,
-            el('p', { class: 'form-hint' }, `Default: ${state.model || 'google/gemma-4-31b-it:free'}. If unavailable, try ${state.modelHint || 'google/gemma-3-27b-it:free'} (known free, vision-capable).`),
+            el('p', { class: 'form-hint' }, `Default: ${state.model || 'google/gemma-4-31b-it:free'}. Pick from the list to switch, or type a custom OpenRouter model id. If the current model is rate-limited (429), Tak will automatically fall back to ${state.modelHint || 'google/gemma-3-27b-it:free'}.`),
+            aiDebugLabel,
         ]),
         el('div', { class: 'form-group' }, [
             el('label', { class: 'form-label' }, 'SearXNG URL (web search)'),

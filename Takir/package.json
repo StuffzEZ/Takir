@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/check_imports.mjs && node scripts/check_imports_runtime.mjs && node tests/validate.mjs && node tests/tree_test.mjs && node tests/bugcheck.mjs && node tests/smoke.mjs && node tests/agent_test.mjs && node tests/quiz_test.mjs && node tests/io_test.mjs && node tests/free_sites_test.mjs && node tests/learn_test.mjs && node tests/onboarding_test.mjs && node tests/tour_test.mjs && node tests/bug_report_test.mjs && node tests/storage_architecture_test.mjs && node tests/learn_layout_test.mjs && node tests/modal_confirm_test.mjs"
+    "test": "node scripts/check_imports.mjs && node scripts/check_imports_runtime.mjs && node tests/validate.mjs && node tests/tree_test.mjs && node tests/bugcheck.mjs && node tests/smoke.mjs && node tests/agent_test.mjs && node tests/quiz_test.mjs && node tests/io_test.mjs && node tests/free_sites_test.mjs && node tests/learn_test.mjs && node tests/onboarding_test.mjs && node tests/tour_test.mjs && node tests/bug_report_test.mjs && node tests/storage_architecture_test.mjs && node tests/learn_layout_test.mjs && node tests/modal_confirm_test.mjs && node tests/ai_debug_test.mjs && node tests/retry_test.mjs && node tests/fallback_test.mjs"
   }
 }
